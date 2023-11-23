@@ -5,15 +5,17 @@ import cv2
 import numpy as np
 import pandas as pd
 
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
+import keras.backend as K
+
 from oc_sort.ocsort import OCSort
 from utils.box_utils import *
 
 from what.models.detection.datasets.coco import COCO_CLASS_NAMES
 from what.models.detection.yolo.yolov4 import YOLOV4
 from what.models.detection.yolo.yolov4_tiny import YOLOV4_TINY
-from what.models.detection.yolo.yolov3 import YOLOV3
-from what.models.detection.yolo.yolov3_tiny import YOLOV3_TINY
-from what.models.detection.yolo.utils.yolo_utils import yolo_process_output, yolov4_anchors, yolov4_tiny_anchors, yolov3_anchors, yolov3_tiny_anchors
+from what.models.detection.yolo.utils.yolo_utils import yolo_process_output, yolov4_anchors, yolov4_tiny_anchors
 
 from what.cli.model import *
 from what.utils.file import get_file
@@ -23,18 +25,20 @@ from what.attacks.detection.yolo.PCB import PCBAttack
 SHOW_IMAGE = True
 
 # Check what_model_list for all supported models
-what_yolov3_model_list = what_model_list[0:4]
-index = 0 # YOLOv3 Darknet
+what_yolov4_model_list = what_model_list[4:6]
 
-# what_yolov4_model_list = what_model_list[4:6]
-
-# index = 0 # YOLOv4
+index = 0 # YOLOv4
 # index = 1 # YOLOv4 Tiny
 
+custom_objects = {
+    'mish': lambda x: x * K.tanh(K.softplus(x)),
+    'tf': tf
+}
+
 # Download the model first if not exists
-WHAT_YOLO_MODEL_FILE = what_yolov3_model_list[index][WHAT_MODEL_FILE_INDEX]
-WHAT_YOLO_MODEL_URL  = what_yolov3_model_list[index][WHAT_MODEL_URL_INDEX]
-WHAT_YOLO_MODEL_HASH = what_yolov3_model_list[index][WHAT_MODEL_HASH_INDEX]
+WHAT_YOLO_MODEL_FILE = what_yolov4_model_list[index][WHAT_MODEL_FILE_INDEX]
+WHAT_YOLO_MODEL_URL  = what_yolov4_model_list[index][WHAT_MODEL_URL_INDEX]
+WHAT_YOLO_MODEL_HASH = what_yolov4_model_list[index][WHAT_MODEL_HASH_INDEX]
 
 if not os.path.isfile(os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE)):
     get_file(WHAT_YOLO_MODEL_FILE,
@@ -43,10 +47,10 @@ if not os.path.isfile(os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE)):
              WHAT_YOLO_MODEL_HASH)
 
 # Darknet
-model = YOLOV3(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE))
+model = YOLOV4(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE))
 # model = YOLOV4_TINY(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLOV4_MODEL_FILE))
 
-attack = PCBAttack(os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE), "multi_untargeted", COCO_CLASS_NAMES, decay=0.99)
+attack = PCBAttack(os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE), "multi_untargeted", COCO_CLASS_NAMES, decay=0.99, custom_objects=custom_objects)
 attack.fixed = False
 
 mot_tracker = OCSort(det_thresh=0.6, iou_threshold=0.3, use_byte=False)
@@ -91,7 +95,7 @@ if __name__ == "__main__":
         print("Error opening the video file")
         exit(1)
 
-    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv3-OC-SORT-PCB',
+    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv4-OC-SORT-PCB',
                             'data', f'{args.video:04d}.txt')
     if not os.path.exists(os.path.dirname(OUT_FILE)):
         # Create a new directory if it does not exist
@@ -145,7 +149,7 @@ if __name__ == "__main__":
             # images, boxes, labels, probs = model.predict(image)
 
             image, outs = attack.attack(input_cv_image)
-            boxes, labels, probs = yolo_process_output(outs, yolov3_anchors, len(COCO_CLASS_NAMES))
+            boxes, labels, probs = yolo_process_output(outs, yolov4_anchors, len(COCO_CLASS_NAMES))
 
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 

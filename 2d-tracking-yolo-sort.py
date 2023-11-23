@@ -11,8 +11,6 @@ from utils.box_utils import *
 from what.models.detection.datasets.coco import COCO_CLASS_NAMES
 from what.models.detection.yolo.yolov4 import YOLOV4
 from what.models.detection.yolo.yolov4_tiny import YOLOV4_TINY
-from what.models.detection.yolo.yolov3 import YOLOV3
-from what.models.detection.yolo.yolov3_tiny import YOLOV3_TINY
 
 from what.cli.model import *
 from what.utils.file import get_file
@@ -20,18 +18,15 @@ from what.utils.file import get_file
 SHOW_IMAGE = True
 
 # Check what_model_list for all supported models
-index = 0 # YOLOv3 Darknet
-what_yolov3_model_list = what_model_list[0:4]
+what_yolov4_model_list = what_model_list[4:6]
 
-# Check what_model_list for all supported models
-# what_yolov4_model_list = what_model_list[4:6]
-# index = 0 # YOLOv4
+index = 0 # YOLOv4
 # index = 1 # YOLOv4 Tiny
 
 # Download the model first if not exists
-WHAT_YOLO_MODEL_FILE = what_yolov3_model_list[index][WHAT_MODEL_FILE_INDEX]
-WHAT_YOLO_MODEL_URL  = what_yolov3_model_list[index][WHAT_MODEL_URL_INDEX]
-WHAT_YOLO_MODEL_HASH = what_yolov3_model_list[index][WHAT_MODEL_HASH_INDEX]
+WHAT_YOLO_MODEL_FILE = what_yolov4_model_list[index][WHAT_MODEL_FILE_INDEX]
+WHAT_YOLO_MODEL_URL  = what_yolov4_model_list[index][WHAT_MODEL_URL_INDEX]
+WHAT_YOLO_MODEL_HASH = what_yolov4_model_list[index][WHAT_MODEL_HASH_INDEX]
 
 if not os.path.isfile(os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE)):
     get_file(WHAT_YOLO_MODEL_FILE,
@@ -87,7 +82,7 @@ if __name__ == "__main__":
         print("Error opening the video file")
         exit(1)
 
-    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv3-SORT',
+    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv4-SORT',
                             'data', f'{args.video:04d}.txt')
     if not os.path.exists(os.path.dirname(OUT_FILE)):
         # Create a new directory if it does not exist
