@@ -19,6 +19,7 @@ from what.models.detection.yolo.utils.yolo_utils import yolo_process_output, yol
 
 from what.cli.model import *
 from what.utils.file import get_file
+from what.utils.resize import bilinear_resize
 
 from what.attacks.detection.yolo.PCB import PCBAttack
 
@@ -145,13 +146,23 @@ if __name__ == "__main__":
             input_cv_image = np.array(input_cv_image).astype(np.float32) / 255.0
             input_cv_image = cv2.cvtColor(input_cv_image, cv2.COLOR_BGR2RGB)
 
-            # Run inference
-            # images, boxes, labels, probs = model.predict(image)
-
+            # Adversarial Attack
             image, outs = attack.attack(input_cv_image)
             boxes, labels, probs = yolo_process_output(outs, yolov4_anchors, len(COCO_CLASS_NAMES))
 
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+
+            # Resize the noise to the same shape as the input image
+            noise = attack.noise
+            noise_r = bilinear_resize(noise[:, :, 0], height, width)
+            noise_g = bilinear_resize(noise[:, :, 1], height, width)
+            noise_b = bilinear_resize(noise[:, :, 2], height, width)
+            noise = np.dstack((noise_r, noise_g, noise_b))
+
+            # Apply adversarial perturbations
+            out_img = np.array(frame).astype(np.float32) / 255.0 + noise
+            out_img = np.clip(out_img, 0, 1)
+            out_img = (out_img * 255.0).astype(np.uint8)
 
             # Only draw 2: car, 5: bus, 7: truck
             boxes = np.array([box for box, label in zip(boxes, labels) if label in [2, 5, 7]])
@@ -190,7 +201,7 @@ if __name__ == "__main__":
                     f_tracker.flush()
 
                 # Draw bounding boxes onto the predicted image
-                draw_bounding_boxes(frame, trackers[:, 0:4], labels, trackers[:, 4])
+                draw_bounding_boxes(out_img, trackers[:, 0:4], labels, trackers[:, 4])
 
             i_frame = i_frame + 1
 
@@ -200,9 +211,9 @@ if __name__ == "__main__":
                 cv2.setWindowProperty("Frame", cv2.WND_PROP_FULLSCREEN , cv2.WINDOW_FULLSCREEN)
 
                 if args.dataset == "kitti":
-                    cv2.imshow('Frame', draw_gt_pred_image(origin, frame, orientation="vertical"))
+                    cv2.imshow('Frame', draw_gt_pred_image(origin, out_img, orientation="vertical"))
                 else:
-                    cv2.imshow('Frame', draw_gt_pred_image(origin, frame, orientation="horizontal"))
+                    cv2.imshow('Frame', draw_gt_pred_image(origin, out_img, orientation="horizontal"))
 
                 # Press Q on keyboard to  exit
                 if cv2.waitKey(1) & 0xFF == ord('q'):
