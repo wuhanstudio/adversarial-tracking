@@ -26,7 +26,7 @@ class YOLOX_X:
         self.class_names = class_names
 
     def predict(self, image):
-        outputs, _ = self.predictor.inference(image)
+        outputs, _, grads = self.predictor.inference(image)
         height, width, _ = image.shape
         scale = min(640 / float(height), 640 / float(width))
 
@@ -56,4 +56,4 @@ class YOLOX_X:
             box[0] += (box[2] / 2)
             box[1] += (box[3] / 2)
 
-        return image, boxes, class_ids, probs
+        return image, boxes, class_ids, probs, grads

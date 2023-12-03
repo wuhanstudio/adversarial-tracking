@@ -52,6 +52,13 @@ class Predictor(object):
         img.requires_grad = True
         outputs = self.model(img)
 
+        loss = 0
+        for i in range(0, len(COCO_CLASSES)):
+            loss = loss + torch.sum(torch.sigmoid(outputs[:, 4]) * outputs[:, i+5])
+        loss.backward()
+        
+        delta = torch.sign(img.grad[0])
+
         if self.decoder is not None:
             outputs = self.decoder(outputs, dtype=outputs.type())
         outputs = postprocess(
@@ -59,4 +66,4 @@ class Predictor(object):
             self.nmsthre, class_agnostic=True
         )
 
-        return outputs, img_info
+        return outputs, img_info, delta

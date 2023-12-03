@@ -14,6 +14,8 @@ from yolox.yolox_x import YOLOX_X
 from what.cli.model import *
 from what.utils.file import get_file
 
+from what.utils.resize import bilinear_resize
+
 SHOW_IMAGE = True
 
 # Check what_model_list for all supported models
@@ -94,6 +96,8 @@ if __name__ == "__main__":
 
     # Read until video is completed
     i_frame = 0
+
+    noises = 0
     while(vid.isOpened()):
         # Capture frame-by-frame
         ret, frame = vid.read()
@@ -130,9 +134,24 @@ if __name__ == "__main__":
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # Run inference
-            images, boxes, labels, probs, _ = model.predict(image)
+            inputs = np.clip(image  + noises, 0, 255)
+            images, boxes, labels, probs, grads = model.predict(inputs)
 
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            # Resize the noise to the same shape as the input image
+            noise = grads.cpu().detach().numpy().transpose((1, 2, 0))
+            noise = noise.astype(np.int8)
+
+            noise_r = bilinear_resize(noise[:, :, 0], height, width)
+            noise_g = bilinear_resize(noise[:, :, 1], height, width)
+            noise_b = bilinear_resize(noise[:, :, 2], height, width)
+            noise = np.dstack((noise_r, noise_g, noise_b))
+
+            noises = noises + noise
+            noises = np.clip(noises, -8, 8)
+
+            frame = inputs.astype(np.uint8)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            frame = frame / 255.0
 
             # Only draw 2: car, 5: bus, 7: truck
             boxes = np.array([box for box, label in zip(boxes, labels) if label in [2, 5, 7]])
@@ -181,9 +200,9 @@ if __name__ == "__main__":
                 cv2.setWindowProperty("Frame", cv2.WND_PROP_FULLSCREEN , cv2.WINDOW_FULLSCREEN)
 
                 if args.dataset == "kitti":
-                    cv2.imshow('Frame', draw_gt_pred_image(origin, frame, orientation="vertical"))
+                    cv2.imshow('Frame', draw_gt_pred_image(origin / 255.0, frame, orientation="vertical"))
                 else:
-                    cv2.imshow('Frame', draw_gt_pred_image(origin, frame, orientation="horizontal"))
+                    cv2.imshow('Frame', draw_gt_pred_image(origin / 255.0, frame, orientation="horizontal"))
 
                 # Press Q on keyboard to  exit
                 if cv2.waitKey(1) & 0xFF == ord('q'):
