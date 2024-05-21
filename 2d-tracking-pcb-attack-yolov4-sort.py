@@ -5,27 +5,41 @@ import cv2
 import numpy as np
 import pandas as pd
 
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
+import keras.backend as K
+
 from sort.sort import Sort
 from utils.box_utils import *
 
 from what.models.detection.datasets.coco import COCO_CLASS_NAMES
-from yolox.yolox_x import YOLOX_X
+from what.models.detection.yolo.yolov4 import YOLOV4
+from what.models.detection.yolo.yolov4_tiny import YOLOV4_TINY
+from what.models.detection.yolo.utils.yolo_utils import yolo_process_output, yolov4_anchors, yolov4_tiny_anchors
 
 from what.cli.model import *
 from what.utils.file import get_file
+from what.utils.resize import bilinear_resize
+
+from what.attacks.detection.yolo.PCB import PCBAttack
 
 SHOW_IMAGE = True
 
 # Check what_model_list for all supported models
-what_yolox_model_list = what_model_list[9:13]
+what_yolov4_model_list = what_model_list[4:6]
 
-index = 0 # YOLOX-X
-# index = 1 # YOLOX-L
+index = 0 # YOLOv4
+# index = 1 # YOLOv4 Tiny
+
+custom_objects = {
+    'mish': lambda x: x * K.tanh(K.softplus(x)),
+    'tf': tf
+}
 
 # Download the model first if not exists
-WHAT_YOLO_MODEL_FILE = what_yolox_model_list[index][WHAT_MODEL_FILE_INDEX]
-WHAT_YOLO_MODEL_URL  = what_yolox_model_list[index][WHAT_MODEL_URL_INDEX]
-WHAT_YOLO_MODEL_HASH = what_yolox_model_list[index][WHAT_MODEL_HASH_INDEX]
+WHAT_YOLO_MODEL_FILE = what_yolov4_model_list[index][WHAT_MODEL_FILE_INDEX]
+WHAT_YOLO_MODEL_URL  = what_yolov4_model_list[index][WHAT_MODEL_URL_INDEX]
+WHAT_YOLO_MODEL_HASH = what_yolov4_model_list[index][WHAT_MODEL_HASH_INDEX]
 
 if not os.path.isfile(os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE)):
     get_file(WHAT_YOLO_MODEL_FILE,
@@ -34,12 +48,16 @@ if not os.path.isfile(os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE)):
              WHAT_YOLO_MODEL_HASH)
 
 # Darknet
-model = YOLOX_X(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE))
+model = YOLOV4(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE))
 # model = YOLOV4_TINY(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLOV4_MODEL_FILE))
+
+attack = PCBAttack(os.path.join(WHAT_MODEL_PATH, WHAT_YOLO_MODEL_FILE), "multi_untargeted", COCO_CLASS_NAMES, decay=0.99, custom_objects=custom_objects)
+attack.fixed = False
 
 mot_tracker = Sort( max_age=1, 
                     min_hits=3,
                     iou_threshold=0.3) #create instance of the SORT tracker
+
 
 def is_not_empty_file(fpath):
     return os.path.isfile(fpath) and os.path.getsize(fpath) > 0
@@ -81,7 +99,7 @@ if __name__ == "__main__":
         print("Error opening the video file")
         exit(1)
 
-    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOX-SORT',
+    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv4-SORT-PCB',
                             'data', f'{args.video:04d}.txt')
     if not os.path.exists(os.path.dirname(OUT_FILE)):
         # Create a new directory if it does not exist
@@ -127,16 +145,31 @@ if __name__ == "__main__":
             draw_bounding_boxes(origin, np.array(boxes), labels, ids)
 
             # Image preprocessing
-            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            input_cv_image = cv2.resize(frame, (416, 416))
+            input_cv_image = np.array(input_cv_image).astype(np.float32) / 255.0
+            input_cv_image = cv2.cvtColor(input_cv_image, cv2.COLOR_BGR2RGB)
 
-            # Run inference
-            images, boxes, labels, probs, _ = model.predict(image)
+            # Adversarial Attack
+            image, outs = attack.attack(input_cv_image)
+            boxes, labels, probs = yolo_process_output(outs, yolov4_anchors, len(COCO_CLASS_NAMES))
 
             image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
+            # Resize the noise to the same shape as the input image
+            noise = attack.noise
+            noise_r = bilinear_resize(noise[:, :, 0], height, width)
+            noise_g = bilinear_resize(noise[:, :, 1], height, width)
+            noise_b = bilinear_resize(noise[:, :, 2], height, width)
+            noise = np.dstack((noise_r, noise_g, noise_b))
+
+            # Apply adversarial perturbations
+            out_img = np.array(frame).astype(np.float32) / 255.0 + noise
+            out_img = np.clip(out_img, 0, 1)
+            out_img = (out_img * 255.0).astype(np.uint8)
+
             # Only draw 2: car, 5: bus, 7: truck
-            boxes = np.array([box for box, label in zip(boxes, labels) if label in [2, 5, 7]])
-            probs = np.array([prob for prob, label in zip(probs, labels) if label in [2, 5, 7]])
+            boxes  = np.array([box for box, label in zip(boxes, labels) if label in [2, 5, 7]])
+            probs  = np.array([prob for prob, label in zip(probs, labels) if label in [2, 5, 7]])
             labels = np.array([2 for label in labels if label in [2, 5, 7]])
 
             # convert [x1, y1, w, h] to [x1, y1, x2, y2]
@@ -144,7 +177,7 @@ if __name__ == "__main__":
                 sort_boxes = boxes.copy()
 
                 # (xc, yc, w, h) --> (x1, y1, x2, y2)
-                height, width, _ = image.shape
+                height, width, _ = frame.shape
 
                 for box in sort_boxes:
                     box[0] *= width
@@ -171,7 +204,7 @@ if __name__ == "__main__":
                     f_tracker.flush()
 
                 # Draw bounding boxes onto the predicted image
-                draw_bounding_boxes(frame, trackers[:, 0:4], labels, trackers[:, 4])
+                draw_bounding_boxes(out_img, trackers[:, 0:4], labels, trackers[:, 4])
 
             i_frame = i_frame + 1
 
@@ -181,9 +214,9 @@ if __name__ == "__main__":
                 cv2.setWindowProperty("Frame", cv2.WND_PROP_FULLSCREEN , cv2.WINDOW_FULLSCREEN)
 
                 if args.dataset == "kitti":
-                    cv2.imshow('Frame', draw_gt_pred_image(origin, frame, orientation="vertical"))
+                    cv2.imshow('Frame', draw_gt_pred_image(origin, out_img, orientation="vertical"))
                 else:
-                    cv2.imshow('Frame', draw_gt_pred_image(origin, frame, orientation="horizontal"))
+                    cv2.imshow('Frame', draw_gt_pred_image(origin, out_img, orientation="horizontal"))
 
                 # Press Q on keyboard to  exit
                 if cv2.waitKey(1) & 0xFF == ord('q'):
