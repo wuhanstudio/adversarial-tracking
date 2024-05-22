@@ -43,7 +43,7 @@ model = YOLOV3(COCO_CLASS_NAMES, os.path.join(
     WHAT_MODEL_PATH, WHAT_YOLOV3_MODEL_FILE))
 # model = YOLOV3_TINY(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLOV3_MODEL_FILE))
 
-# Deep SORT
+# Strong SORT
 encoder = create_box_encoder("mars-small128.pb", batch_size=32)
 
 metric = nn_matching.NearestNeighborDistanceMetric("cosine", 0.2, None)

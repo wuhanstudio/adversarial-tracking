@@ -80,7 +80,11 @@ if __name__ == "__main__":
                            '{0:04d}.txt'.format(args.video))
     print("Reading KITTI Label:", f_label)
 
-    gt_labels = pd.read_csv(f_label, header=None, sep=' ')
+    gt_labels = None
+    if is_not_empty_file(f_label):
+        gt_labels = pd.read_csv(f_label, header=None, sep=' ')
+    else:
+        print("Empty label file:", f_label)
 
     vid = cv2.VideoCapture(f_video)
 

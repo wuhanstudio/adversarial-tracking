@@ -5,46 +5,62 @@ import cv2
 import numpy as np
 import pandas as pd
 
-from deep_sort import nn_matching
-from deep_sort.detection import Detection
-from deep_sort.tracker import Tracker
+import tensorflow as tf
+tf.compat.v1.disable_eager_execution()
+import keras.backend as K
+
+from strong_sort import nn_matching
+from strong_sort.detection import Detection
+from strong_sort.tracker import Tracker
 
 from utils.box_utils import *
 from utils.encorder import *
 
 from what.models.detection.datasets.coco import COCO_CLASS_NAMES
-from what.models.detection.yolo.yolov3 import YOLOV3
-from what.models.detection.yolo.yolov3_tiny import YOLOV3_TINY
+from what.models.detection.yolo.yolov4 import YOLOV4
+from what.models.detection.yolo.yolov4_tiny import YOLOV4_TINY
+from what.models.detection.yolo.utils.yolo_utils import yolo_process_output, yolov4_anchors, yolov4_tiny_anchors, yolov3_anchors, yolov3_tiny_anchors
 
 from what.cli.model import *
 from what.utils.file import get_file
+from what.utils.resize import bilinear_resize
+
+from what.attacks.detection.yolo.PCB import PCBAttack
 
 SHOW_IMAGE = True
 
 # Check what_model_list for all supported models
-what_yolov3_model_list = what_model_list[0:4]
+what_yolov4_model_list = what_model_list[4:6]
 
-index = 0  # YOLOv3
-# index = 1 # YOLOv3 Tiny
+index = 0  # YOLOv4
+# index = 1 # YOLOv4 Tiny
+
+custom_objects = {
+    'mish': lambda x: x * K.tanh(K.softplus(x)),
+    'tf': tf
+}
 
 # Download the model first if not exists
-WHAT_YOLOV3_MODEL_FILE = what_yolov3_model_list[index][WHAT_MODEL_FILE_INDEX]
-WHAT_YOLOV3_MODEL_URL = what_yolov3_model_list[index][WHAT_MODEL_URL_INDEX]
-WHAT_YOLOV3_MODEL_HASH = what_yolov3_model_list[index][WHAT_MODEL_HASH_INDEX]
+WHAT_YOLOV4_MODEL_FILE = what_yolov4_model_list[index][WHAT_MODEL_FILE_INDEX]
+WHAT_YOLOV4_MODEL_URL = what_yolov4_model_list[index][WHAT_MODEL_URL_INDEX]
+WHAT_YOLOV4_MODEL_HASH = what_yolov4_model_list[index][WHAT_MODEL_HASH_INDEX]
 
-if not os.path.isfile(os.path.join(WHAT_MODEL_PATH, WHAT_YOLOV3_MODEL_FILE)):
-    get_file(WHAT_YOLOV3_MODEL_FILE,
+if not os.path.isfile(os.path.join(WHAT_MODEL_PATH, WHAT_YOLOV4_MODEL_FILE)):
+    get_file(WHAT_YOLOV4_MODEL_FILE,
              WHAT_MODEL_PATH,
-             WHAT_YOLOV3_MODEL_URL,
-             WHAT_YOLOV3_MODEL_HASH)
+             WHAT_YOLOV4_MODEL_URL,
+             WHAT_YOLOV4_MODEL_HASH)
 
 # Darknet
-model = YOLOV3(COCO_CLASS_NAMES, os.path.join(
-    WHAT_MODEL_PATH, WHAT_YOLOV3_MODEL_FILE))
-# model = YOLOV3_TINY(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLOV3_MODEL_FILE))
+model = YOLOV4(COCO_CLASS_NAMES, os.path.join(
+    WHAT_MODEL_PATH, WHAT_YOLOV4_MODEL_FILE))
+# model = YOLOV4_TINY(COCO_CLASS_NAMES, os.path.join(WHAT_MODEL_PATH, WHAT_YOLOV4_MODEL_FILE))
 
-# Deep SORT
+# Strong SORT
 encoder = create_box_encoder("mars-small128.pb", batch_size=32)
+
+attack = PCBAttack(os.path.join(WHAT_MODEL_PATH, WHAT_YOLOV4_MODEL_FILE), "multi_untargeted", COCO_CLASS_NAMES, decay=0.99, custom_objects=custom_objects)
+attack.fixed = False
 
 metric = nn_matching.NearestNeighborDistanceMetric("cosine", 0.2, None)
 tracker = Tracker(metric)
@@ -55,7 +71,7 @@ def is_not_empty_file(fpath):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="2D Detection (Deep SORT)")
+    parser = argparse.ArgumentParser(description="2D Detection (Strong SORT)")
     parser.add_argument('--video', type=int, default=0,
                         help='Video Index: 0-20')
     parser.add_argument('--dataset',
@@ -91,8 +107,8 @@ if __name__ == "__main__":
         print("Error opening the video file")
         exit(1)
 
-    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv3-DEEP-SORT',
-                            'data', f'{args.video:04d}.txt')
+    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv4-STRONG-SORT-PCB',
+                            'data', '{0:04d}.txt'.format(args.video))
     if not os.path.exists(os.path.dirname(OUT_FILE)):
         # Create a new directory if it does not exist
         os.makedirs(os.path.dirname(OUT_FILE))
@@ -137,10 +153,27 @@ if __name__ == "__main__":
             draw_bounding_boxes(origin, np.array(boxes), labels, ids)
 
             # Image preprocessing
-            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            input_cv_image = cv2.resize(frame, (416, 416))
+            input_cv_image = np.array(input_cv_image).astype(np.float32) / 255.0
+            input_cv_image = cv2.cvtColor(input_cv_image, cv2.COLOR_BGR2RGB)
 
             # Run inference
-            images, boxes, labels, probs = model.predict(image)
+            # images, boxes, labels, probs = model.predict(image)
+
+            image, outs = attack.attack(input_cv_image)
+            boxes, labels, probs = yolo_process_output(outs, yolov4_anchors, len(COCO_CLASS_NAMES))
+
+            # Resize the noise to the same shape as the input image
+            noise = attack.noise
+            noise_r = bilinear_resize(noise[:, :, 0], height, width)
+            noise_g = bilinear_resize(noise[:, :, 1], height, width)
+            noise_b = bilinear_resize(noise[:, :, 2], height, width)
+            noise = np.dstack((noise_r, noise_g, noise_b))
+
+            # Apply adversarial perturbations
+            out_img = np.array(frame).astype(np.float32) / 255.0 + noise
+            out_img = np.clip(out_img, 0, 1)
+            out_img = (out_img * 255.0).astype(np.uint8)
 
             # Only draw 2: car, 5: bus, 7: truck
             boxes = np.array([box for box, label in zip(
@@ -166,7 +199,7 @@ if __name__ == "__main__":
                     box[1] -= box[3] / 2
 
                     # [x1, y1, w, h]
-                    feature = encoder(image, box.reshape(1, -1).copy())
+                    feature = encoder(out_img, box.reshape(1, -1).copy())
 
                     detections.append(Detection(box, probs[i], feature[0]))
 
@@ -191,7 +224,7 @@ if __name__ == "__main__":
 
                 # Draw bounding boxes onto the predicted image
                 labels = ['Car'] * len(bboxes)
-                draw_bounding_boxes(frame, np.array(bboxes), labels, ids)
+                draw_bounding_boxes(out_img, np.array(bboxes), labels, ids)
 
             i_frame = i_frame + 1
 
@@ -201,9 +234,9 @@ if __name__ == "__main__":
                 cv2.setWindowProperty("Frame", cv2.WND_PROP_FULLSCREEN , cv2.WINDOW_FULLSCREEN)
 
                 if args.dataset == "kitti":
-                    cv2.imshow('Frame', draw_gt_pred_image(origin, frame, orientation="vertical"))
+                    cv2.imshow('Frame', draw_gt_pred_image(origin, out_img, orientation="vertical"))
                 else:
-                    cv2.imshow('Frame', draw_gt_pred_image(origin, frame, orientation="horizontal"))
+                    cv2.imshow('Frame', draw_gt_pred_image(origin, out_img, orientation="horizontal"))
 
                 # Press Q on keyboard to  exit
                 if cv2.waitKey(1) & 0xFF == ord('q'):
