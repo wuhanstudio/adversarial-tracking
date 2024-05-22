@@ -1,6 +1,6 @@
 import pandas as pd
 
-folder = "YOLOv4-SORT-PCB"
+folder = "YOLOv4-OC-SORT"
 dataset = "carla"
 data = pd.read_csv(f"data/trackers/{dataset}/{dataset}_2d_box_train/{folder}/car_summary.txt", sep=" ")
 
