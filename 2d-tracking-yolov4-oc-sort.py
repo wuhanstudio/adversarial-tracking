@@ -80,7 +80,7 @@ if __name__ == "__main__":
         print("Error opening the video file")
         exit(1)
 
-    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv4-SORT',
+    OUT_FILE = os.path.join(TRACKERS_FOLDER, 'YOLOv4-OC-SORT',
                             'data', f'{args.video:04d}.txt')
     if not os.path.exists(os.path.dirname(OUT_FILE)):
         # Create a new directory if it does not exist
