@@ -190,6 +190,7 @@ if __name__ == "__main__":
             # Convert [xc, yc, w, h] to [x1, y1, w, h]
             if len(boxes) > 0:
                 sort_boxes = boxes.copy()
+                height, width, _ = image.shape
 
                 detections = []
                 # (xc, yc, w, h) --> (x1, y1, w, h)
