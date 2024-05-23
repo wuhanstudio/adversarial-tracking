@@ -129,6 +129,13 @@ if __name__ == "__main__":
             origin = frame.copy()
             height, width, _ = frame.shape
 
+            # Resize the noise
+            if noise is not None:
+                noise_r = bilinear_resize(noise[:, :, 0], height, width)
+                noise_g = bilinear_resize(noise[:, :, 1], height, width)
+                noise_b = bilinear_resize(noise[:, :, 2], height, width)
+                noise_l = np.dstack((noise_r, noise_g, noise_b))
+
             # Draw bounding boxes onto the original image
             labels = []
             ids = []
@@ -175,13 +182,6 @@ if __name__ == "__main__":
 
                 # (xc, yc, w, h) --> (x1, y1, x2, y2)
                 height, width, _ = image.shape
-
-                # Resize the noise
-                if noise is not None:
-                    noise_r = bilinear_resize(noise[:, :, 0], height, width)
-                    noise_g = bilinear_resize(noise[:, :, 1], height, width)
-                    noise_b = bilinear_resize(noise[:, :, 2], height, width)
-                    noise_l = np.dstack((noise_r, noise_g, noise_b))
 
                 for box in sort_boxes:
                     box[0] *= width
