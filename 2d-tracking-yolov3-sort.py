@@ -14,6 +14,7 @@ from what.models.detection.yolo.yolov3_tiny import YOLOV3_TINY
 
 from what.cli.model import *
 from what.utils.file import get_file
+from what.utils.resize import bilinear_resize
 
 SHOW_IMAGE = True
 
@@ -55,8 +56,18 @@ if __name__ == "__main__":
                         nargs='?',
                         choices=['kitti', 'carla'],
                         help='Evaluation Dataset (default: %(default)s)')
+    parser.add_argument('--noise',
+                        default=None,
+                        nargs='?',
+                        const='noise',
+                        help='Adversarial Perturbation *.npy (default: %(default)s)')
 
     args = parser.parse_args()
+
+    noise = None
+    if args.noise != None:
+        print(args.noise)
+        noise = np.load(args.noise)
 
     DATASET = args.dataset
     GT_FOLDER = os.path.join(os.path.abspath(os.path.join(
@@ -115,6 +126,13 @@ if __name__ == "__main__":
             origin = frame.copy()
             height, width, _ = frame.shape
 
+            # Resize the noise
+            if noise is not None:
+                noise_r = bilinear_resize(noise[:, :, 0], height, width)
+                noise_g = bilinear_resize(noise[:, :, 1], height, width)
+                noise_b = bilinear_resize(noise[:, :, 2], height, width)
+                noise_l = np.dstack((noise_r, noise_g, noise_b))
+
             # Draw bounding boxes onto the original image
             labels = []
             ids = []
@@ -129,6 +147,21 @@ if __name__ == "__main__":
 
             # Image preprocessing
             image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            # Add the perturbation
+            if noise is not None:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                frame = frame.astype(np.float32) / 255.0
+                frame = frame + noise_l
+                frame = np.clip(frame, 0, 1)
+                frame = (frame * 255.0).astype(np.uint8)
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+                image = cv2.resize(image, (416, 416))
+                image = image.astype(np.float32) / 255.0
+                image = image + noise
+                image = np.clip(image, 0, 1)
+                image = (image * 255.0).astype(np.uint8)
 
             # Run inference
             images, boxes, labels, probs = model.predict(image)
@@ -145,7 +178,7 @@ if __name__ == "__main__":
                 sort_boxes = boxes.copy()
 
                 # (xc, yc, w, h) --> (x1, y1, x2, y2)
-                height, width, _ = image.shape
+                height, width, _ = frame.shape
 
                 for box in sort_boxes:
                     box[0] *= width
