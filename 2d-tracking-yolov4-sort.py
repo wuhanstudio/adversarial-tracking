@@ -11,6 +11,7 @@ from utils.box_utils import *
 from what.models.detection.datasets.coco import COCO_CLASS_NAMES
 from what.models.detection.yolo.yolov4 import YOLOV4
 from what.models.detection.yolo.yolov4_tiny import YOLOV4_TINY
+from what.models.detection.yolo.utils.yolo_utils import yolo_process_output, yolov3_anchors
 
 from what.cli.model import *
 from what.utils.file import get_file
@@ -163,16 +164,14 @@ if __name__ == "__main__":
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
                 image = cv2.resize(image, (416, 416))
-                image = image.astype(np.float32) / 255.0
+                image = np.array(image).astype(np.float32) / 255.0
                 image = image + noise
-                image = np.clip(image, 0, 1)
-                image = (image * 255.0).astype(np.uint8)
+                image = np.clip(image, 0.0, 1.0)
 
             # Run inference
-            images, boxes, labels, probs = model.predict(image)
-
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-
+            outs = model.model.predict(np.array([image]))
+            boxes, labels, probs = yolo_process_output(outs, yolov3_anchors, len(COCO_CLASS_NAMES))
+    
             # Only draw 2: car, 5: bus, 7: truck
             boxes = np.array([box for box, label in zip(boxes, labels) if label in [2, 5, 7]])
             probs = np.array([prob for prob, label in zip(probs, labels) if label in [2, 5, 7]])

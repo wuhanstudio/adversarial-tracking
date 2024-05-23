@@ -15,6 +15,7 @@ from what.models.detection.yolo.yolov3_tiny import YOLOV3_TINY
 from what.cli.model import *
 from what.utils.file import get_file
 from what.utils.resize import bilinear_resize
+from what.models.detection.yolo.utils.yolo_utils import yolo_process_output, yolov3_anchors
 
 SHOW_IMAGE = True
 
@@ -163,15 +164,13 @@ if __name__ == "__main__":
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
                 image = cv2.resize(image, (416, 416))
-                image = image.astype(np.float32) / 255.0
+                image = np.array(image).astype(np.float32) / 255.0
                 image = image + noise
-                image = np.clip(image, 0, 1)
-                image = (image * 255.0).astype(np.uint8)
+                image = np.clip(image, 0.0, 1.0)
 
             # Run inference
-            images, boxes, labels, probs = model.predict(image)
-
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            outs = model.model.predict(np.array([image]))
+            boxes, labels, probs = yolo_process_output(outs, yolov3_anchors, len(COCO_CLASS_NAMES))
 
             # Only draw 2: car, 5: bus, 7: truck
             boxes = np.array([box for box, label in zip(boxes, labels) if label in [2, 5, 7]])
