@@ -1,9 +1,32 @@
 # Adversarial Tracking
 
-You can find the dataset here (KITTI and CARLA): https://github.com/wuhanstudio/adversarial-tracking/releases
-
 ![](docs/demo.png)
 
+
+# Quick Start
+
+Using `uv` to create a python virtual environment.
+
+```
+uv sync
+```
+
+Download and extract the dataset:
+
+```
+data
+├─gt
+│  ├─carla
+│  └─kitti
+├─trackers
+│  ├─carla
+│  └─kitti
+└─video
+    ├─carla
+    └─kitti
+```
+
+You can find the dataset here (KITTI and CARLA): https://github.com/wuhanstudio/adversarial-tracking/releases
 
 ## 2D Object Tracking
 
