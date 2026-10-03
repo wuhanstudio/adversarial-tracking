@@ -152,7 +152,9 @@ if __name__ == "__main__":
             draw_bounding_boxes(origin, np.array(boxes), labels, ids)
 
             # Image preprocessing
-            image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image = cv2.resize(frame, (416, 416))
+            image = np.array(image).astype(np.float32) / 255.0
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
             # Add the perturbation
             if noise is not None:
@@ -163,8 +165,6 @@ if __name__ == "__main__":
                 frame = (frame * 255.0).astype(np.uint8)
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 
-                image = cv2.resize(image, (416, 416))
-                image = np.array(image).astype(np.float32) / 255.0
                 image = image + noise
                 image = np.clip(image, 0.0, 1.0)
 
