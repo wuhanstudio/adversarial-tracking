@@ -1,5 +1,25 @@
 # Adversarial Tracking
 
+> [!NOTE]
+> The example code only draws bounding boxes for cars.
+
+To see all detected objects, you need to change:
+
+```
+# Only draw 2: car, 5: bus, 7: truck
+boxes = np.array([box for box, label in zip(boxes, labels) if label in [2, 5, 7]])
+probs = np.array([prob for prob, label in zip(probs, labels) if label in [2, 5, 7]])
+labels = np.array([2 for label in labels if label in [2, 5, 7]])
+```
+
+To:
+
+```
+boxes = np.array([box for box, label in zip(boxes, labels)])
+probs = np.array([prob for prob, label in zip(probs, labels)])
+labels = np.array([COCO_CLASS_NAMES[label] for label in labels])
+```
+
 ![](docs/demo.png)
 
 
